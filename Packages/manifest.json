@@ -1,6 +1,6 @@
 {
   "dependencies": {
-    "com.code-philosophy.hybridclr": "3.3.0",
+    "com.code-philosophy.hybridclr": "3.3.1",
     "com.cysharp.unitask": "2.3.3",
     "com.tuyoogame.yooasset": "1.5.1",
     "com.unity.ide.rider": "3.0.24",
