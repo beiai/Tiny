@@ -37,7 +37,7 @@ namespace UniEngine.Base.Module
         /// </summary>
         /// <returns>要获取的游戏框架模块。</returns>
         /// <remarks>如果要获取的游戏框架模块不存在，则自动创建该游戏框架模块。</remarks>
-        public static T GetModule<T>() where T : class, IModule
+        public static T GetModule<T>() where T : class, IModule, new()
         {
             foreach (var module in Modules)
             {
@@ -54,9 +54,9 @@ namespace UniEngine.Base.Module
         /// 创建游戏框架模块。
         /// </summary>
         /// <returns>要创建的游戏框架模块。</returns>
-        private static T CreateModule<T>() where T : class, IModule
+        private static T CreateModule<T>() where T : class, IModule, new()
         {
-            var module = (IModule)Activator.CreateInstance<T>();
+            var module = new T();
             if (module == null)
             {
                 throw new Exception($"Can not create module '{typeof(T).Name}'.");

@@ -1,19 +1,18 @@
 ﻿using System;
-using System.Collections;
 using System.Collections.Generic;
 
 namespace UniFramework.Machine
 {
 	public class StateMachine
 	{
-		private readonly Dictionary<string, IStateNode> _nodes = new Dictionary<string, IStateNode>(100);
+		private readonly Dictionary<string, IStateNode> _nodes = new(100);
 		private IStateNode _curNode;
 		private IStateNode _preNode;
 
 		/// <summary>
 		/// 状态机持有者
 		/// </summary>
-		public System.Object Owner { private set; get; }
+		public object Owner { private set; get; }
 
 		/// <summary>
 		/// 当前运行的节点名称
@@ -33,7 +32,7 @@ namespace UniFramework.Machine
 
 
 		private StateMachine() { }
-		public StateMachine(System.Object owner)
+		public StateMachine(object owner)
 		{
 			Owner = owner;
 		}
@@ -75,10 +74,9 @@ namespace UniFramework.Machine
 		/// <summary>
 		/// 加入一个节点
 		/// </summary>
-		public void AddNode<TNode>() where TNode : IStateNode
+		public void AddNode<TNode>() where TNode : IStateNode, new()
 		{
-			var nodeType = typeof(TNode);
-			var stateNode = Activator.CreateInstance(nodeType) as IStateNode;
+			var stateNode = new TNode();
 			AddNode(stateNode);
 		}
 		public void AddNode(IStateNode stateNode)
