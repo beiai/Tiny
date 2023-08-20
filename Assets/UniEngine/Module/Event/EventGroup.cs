@@ -1,10 +1,11 @@
 ﻿using System;
 using System.Collections.Generic;
+using UniEngine.Base.ReferencePool;
 using UnityEngine;
 
 namespace UniEngine.Module.Event
 {
-	public class EventGroup
+	public class EventGroup: IReference
 	{
 		private readonly Dictionary<Type, List<Action<BaseEvent>>> _cachedListener = new();
 
@@ -41,6 +42,11 @@ namespace UniEngine.Module.Event
 				}
 				list.Clear();
 			}
+			ReferencePool.Release(this);
+		}
+
+		public void Clear()
+		{
 			_cachedListener.Clear();
 		}
 	}

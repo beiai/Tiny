@@ -155,7 +155,10 @@ namespace UniEngine.Module.Event
         public void SendMessage(int eventId, BaseEvent message)
         {
             if (_listeners.ContainsKey(eventId) == false)
+            {
+                ReferencePool.Release(message);
                 return;
+            }
 
             var listeners = _listeners[eventId];
             if (listeners.Count > 0)
@@ -167,6 +170,7 @@ namespace UniEngine.Module.Event
                     currentNode = currentNode.Previous;
                 }
             }
+            ReferencePool.Release(message);
         }
 
         /// <summary>
