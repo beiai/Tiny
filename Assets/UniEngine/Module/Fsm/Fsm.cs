@@ -479,8 +479,10 @@ namespace UniEngine.Module.Fsm
 
             _name = string.Empty;
             _states.Clear();
-            _dataDict.Clear();
-
+            if (_dataDict != null)
+            {
+                _dataDict.Clear();
+            }
             _currentState = null;
             _currentStateTime = 0f;
             _isDestroyed = true;
