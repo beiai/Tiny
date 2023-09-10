@@ -52,11 +52,6 @@ namespace UniEngine.Module.ObjectPool
         public abstract int CanReleaseCount { get; }
 
         /// <summary>
-        /// 获取是否允许对象被多次获取。
-        /// </summary>
-        public abstract bool AllowMultiSpawn { get; }
-
-        /// <summary>
         /// 获取或设置对象池自动释放可释放对象的间隔秒数。
         /// </summary>
         public abstract float AutoReleaseInterval { get; set; }
@@ -91,12 +86,6 @@ namespace UniEngine.Module.ObjectPool
         /// 释放对象池中的所有未使用对象。
         /// </summary>
         public abstract void ReleaseAllUnused();
-
-        /// <summary>
-        /// 获取所有对象信息。
-        /// </summary>
-        /// <returns>所有对象信息。</returns>
-        public abstract ObjectInfo[] GetAllObjectInfos();
 
         internal abstract void Update();
 

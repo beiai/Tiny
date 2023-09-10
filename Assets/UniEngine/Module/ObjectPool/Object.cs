@@ -10,7 +10,6 @@ namespace UniEngine.Module.ObjectPool
     public sealed class Object<T> : IReference where T : ObjectBase
     {
         private T _object;
-        private int _spawnCount;
 
         /// <summary>
         /// 初始化内部对象的新实例。
@@ -18,7 +17,6 @@ namespace UniEngine.Module.ObjectPool
         public Object()
         {
             _object = null;
-            _spawnCount = 0;
         }
 
         /// <summary>
@@ -36,20 +34,6 @@ namespace UniEngine.Module.ObjectPool
         }
 
         /// <summary>
-        /// 获取对象的优先级。
-        /// </summary>
-        public int Priority
-        {
-            get => _object.Priority;
-            internal set => _object.Priority = value;
-        }
-
-        /// <summary>
-        /// 获取自定义释放检查标记。
-        /// </summary>
-        public bool CustomCanReleaseFlag => _object.CustomCanReleaseFlag;
-
-        /// <summary>
         /// 获取对象上次使用时间。
         /// </summary>
         public DateTime LastUseTime => _object.LastUseTime;
@@ -57,12 +41,7 @@ namespace UniEngine.Module.ObjectPool
         /// <summary>
         /// 获取对象是否正在使用。
         /// </summary>
-        public bool IsInUse => _spawnCount > 0;
-
-        /// <summary>
-        /// 获取对象的获取计数。
-        /// </summary>
-        public int SpawnCount => _spawnCount;
+        public bool IsInUse { get; internal set; }
 
         /// <summary>
         /// 创建内部对象。
@@ -79,7 +58,7 @@ namespace UniEngine.Module.ObjectPool
 
             var internalObject = ReferencePool.Acquire<Object<T>>();
             internalObject._object = obj;
-            internalObject._spawnCount = spawned ? 1 : 0;
+            internalObject.IsInUse = spawned ? true : false;
             if (spawned)
             {
                 obj.OnSpawn();
@@ -94,7 +73,6 @@ namespace UniEngine.Module.ObjectPool
         public void Clear()
         {
             _object = null;
-            _spawnCount = 0;
         }
 
         /// <summary>
@@ -112,7 +90,11 @@ namespace UniEngine.Module.ObjectPool
         /// <returns>对象。</returns>
         public T Spawn()
         {
-            _spawnCount++;
+            if (IsInUse)
+            {
+                return null;
+            }
+            IsInUse = true;
             _object.LastUseTime = DateTime.UtcNow;
             _object.OnSpawn();
             return _object;
@@ -125,11 +107,7 @@ namespace UniEngine.Module.ObjectPool
         {
             _object.OnUnSpawn();
             _object.LastUseTime = DateTime.UtcNow;
-            _spawnCount--;
-            if (_spawnCount < 0)
-            {
-                throw new Exception($"Object '{Name}' spawn count is less than 0.");
-            }
+            IsInUse = false;
         }
 
         /// <summary>

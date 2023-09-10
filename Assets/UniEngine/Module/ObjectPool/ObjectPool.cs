@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using dnlib.DotNet.Resources;
 using UniEngine.Base.Collections;
 using UniEngine.Base.ReferencePool;
 using UnityEngine;
@@ -12,41 +15,33 @@ namespace UniEngine.Module.ObjectPool
     /// <typeparam name="T">对象类型。</typeparam>
     public sealed class ObjectPool<T> : ObjectPoolBase where T : ObjectBase
     {
-        private readonly DictionaryMultiValue<string, Object<T>> _objects;
-        private readonly Dictionary<object, Object<T>> _objectMap;
-        private readonly ReleaseObjectFilterCallback<T> _defaultReleaseObjectFilterCallback;
-        private readonly List<T> _cachedCanReleaseObjects;
-        private readonly List<T> _cachedToReleaseObjects;
-        private readonly bool _allowMultiSpawn;
+        private readonly Dictionary<string, HashSet<Object<T>>> _spawnObjects = new();
+        private readonly Dictionary<string, HashSet<Object<T>>> _unSpawnObjects = new();
+        private readonly Dictionary<object, Object<T>> _objectMap = new();
+        private readonly SortedDictionary<long, HashSet<Object<T>>> _timer = new();
+        private readonly Queue<long> _expireTimeQueue = new();
         private float _autoReleaseInterval;
         private int _capacity;
         private float _expireTime;
-        private int _priority;
         private float _autoReleaseTime;
+        private long _minExpireTime;
 
         /// <summary>
         /// 初始化对象池的新实例。
         /// </summary>
         /// <param name="name">对象池名称。</param>
-        /// <param name="allowMultiSpawn">是否允许对象被多次获取。</param>
         /// <param name="autoReleaseInterval">对象池自动释放可释放对象的间隔秒数。</param>
         /// <param name="capacity">对象池的容量。</param>
         /// <param name="expireTime">对象池对象过期秒数。</param>
         /// <param name="priority">对象池的优先级。</param>
-        public ObjectPool(string name, bool allowMultiSpawn, float autoReleaseInterval, int capacity, float expireTime,
+        public ObjectPool(string name, float autoReleaseInterval, int capacity, float expireTime,
             int priority)
             : base(name)
         {
-            _objects = new DictionaryMultiValue<string, Object<T>>();
-            _objectMap = new Dictionary<object, Object<T>>();
-            _defaultReleaseObjectFilterCallback = DefaultReleaseObjectFilterCallback;
-            _cachedCanReleaseObjects = new List<T>();
-            _cachedToReleaseObjects = new List<T>();
-            _allowMultiSpawn = allowMultiSpawn;
             _autoReleaseInterval = autoReleaseInterval;
             Capacity = capacity;
             ExpireTime = expireTime;
-            _priority = priority;
+            Priority = priority;
             _autoReleaseTime = 0f;
         }
 
@@ -67,15 +62,15 @@ namespace UniEngine.Module.ObjectPool
         {
             get
             {
-                GetCanReleaseObjects(_cachedCanReleaseObjects);
-                return _cachedCanReleaseObjects.Count;
+                var count = 0;
+                foreach (var keyValuePair in _unSpawnObjects)
+                {
+                    var unSpawnHashSet = keyValuePair.Value;
+                    count += unSpawnHashSet.Count;
+                }
+                return count;
             }
         }
-
-        /// <summary>
-        /// 获取是否允许对象被多次获取。
-        /// </summary>
-        public override bool AllowMultiSpawn => _allowMultiSpawn;
 
         /// <summary>
         /// 获取或设置对象池自动释放可释放对象的间隔秒数。
@@ -105,7 +100,6 @@ namespace UniEngine.Module.ObjectPool
                 }
 
                 _capacity = value;
-                Release();
             }
         }
 
@@ -129,18 +123,13 @@ namespace UniEngine.Module.ObjectPool
                 }
 
                 _expireTime = value;
-                Release();
             }
         }
 
         /// <summary>
         /// 获取或设置对象池的优先级。
         /// </summary>
-        public override int Priority
-        {
-            get => _priority;
-            set => _priority = value;
-        }
+        public override int Priority { get; set; }
 
         /// <summary>
         /// 创建对象。
@@ -155,13 +144,26 @@ namespace UniEngine.Module.ObjectPool
             }
 
             var internalObject = Object<T>.Create(obj, spawned);
-            _objects.Add(obj.Name, internalObject);
-            _objectMap.Add(obj.Target, internalObject);
-
-            if (Count > _capacity)
+            if (!_spawnObjects.ContainsKey(obj.Name))
             {
-                Release();
+                var newHashSet = new HashSet<Object<T>>();
+                _spawnObjects.Add(obj.Name, newHashSet);
+                if (spawned)
+                {
+                    newHashSet.Add(internalObject);
+                }
             }
+            if (!_unSpawnObjects.ContainsKey(obj.Name))
+            {
+                var newHashSet = new HashSet<Object<T>>();
+                _unSpawnObjects.Add(obj.Name, newHashSet);
+                if (!spawned)
+                {
+                    newHashSet.Add(internalObject);
+                    AddTimer(internalObject);
+                }
+            }
+            _objectMap.Add(obj.Target, internalObject);
         }
 
         /// <summary>
@@ -185,18 +187,7 @@ namespace UniEngine.Module.ObjectPool
                 throw new Exception("Name is invalid.");
             }
 
-            if (_objects.TryGetValue(name, out var objectRange))
-            {
-                foreach (var internalObject in objectRange)
-                {
-                    if (_allowMultiSpawn || !internalObject.IsInUse)
-                    {
-                        return true;
-                    }
-                }
-            }
-
-            return false;
+            return _unSpawnObjects.TryGetValue(name, out var hashSet) && hashSet.Count > 0;
         }
 
         /// <summary>
@@ -220,14 +211,18 @@ namespace UniEngine.Module.ObjectPool
                 throw new Exception("Name is invalid.");
             }
 
-            if (_objects.TryGetValue(name, out var objectRange))
+            if (_unSpawnObjects.TryGetValue(name, out var unSpawnHashSet) && unSpawnHashSet.Count > 0)
             {
-                foreach (var internalObject in objectRange)
+                foreach (var internalObject in unSpawnHashSet)
                 {
-                    if (_allowMultiSpawn || !internalObject.IsInUse)
+                    if (_spawnObjects.TryGetValue(internalObject.Name, out var spawnHashSet))
                     {
-                        return internalObject.Spawn();
+                        spawnHashSet.Add(internalObject);
                     }
+
+                    unSpawnHashSet.Remove(internalObject);
+                    RemoveTimer(internalObject);
+                    return internalObject.Peek();
                 }
             }
 
@@ -263,9 +258,18 @@ namespace UniEngine.Module.ObjectPool
             if (internalObject != null)
             {
                 internalObject.UnSpawn();
-                if (Count > _capacity && internalObject.SpawnCount <= 0)
+                if (internalObject.Locked)
                 {
-                    Release();
+                    return;
+                }
+                if (_spawnObjects.TryGetValue(internalObject.Name, out var spawnHashSet))
+                {
+                    spawnHashSet.Remove(internalObject);
+                }
+                if (_unSpawnObjects.TryGetValue(internalObject.Name, out var unSpawnHashSet))
+                {
+                    unSpawnHashSet.Add(internalObject);
+                    AddTimer(internalObject);
                 }
             }
             else
@@ -306,45 +310,30 @@ namespace UniEngine.Module.ObjectPool
             if (internalObject != null)
             {
                 internalObject.Locked = locked;
-            }
-            else
-            {
-                throw new Exception(
-                    $"Can not find target in object pool '{GetFullName(typeof(T), Name)}', target type is '{target.GetType().FullName}', target value is '{target}'.");
-            }
-        }
-
-        /// <summary>
-        /// 设置对象的优先级。
-        /// </summary>
-        /// <param name="obj">要设置优先级的对象。</param>
-        /// <param name="priority">优先级。</param>
-        public void SetPriority(T obj, int priority)
-        {
-            if (obj == null)
-            {
-                throw new Exception("Object is invalid.");
-            }
-
-            SetPriority(obj.Target, priority);
-        }
-
-        /// <summary>
-        /// 设置对象的优先级。
-        /// </summary>
-        /// <param name="target">要设置优先级的对象。</param>
-        /// <param name="priority">优先级。</param>
-        public void SetPriority(object target, int priority)
-        {
-            if (target == null)
-            {
-                throw new Exception("Target is invalid.");
-            }
-
-            var internalObject = GetObject(target);
-            if (internalObject != null)
-            {
-                internalObject.Priority = priority;
+                if (locked)
+                {
+                    if (_unSpawnObjects.TryGetValue(internalObject.Name, out var unSpawnHashSet) && unSpawnHashSet.Contains(internalObject))
+                    {
+                        unSpawnHashSet.Remove(internalObject);
+                        RemoveTimer(internalObject);
+                        if (_spawnObjects.TryGetValue(internalObject.Name, out var spawnHashSet))
+                        {
+                            spawnHashSet.Add(internalObject);
+                        }
+                    }
+                }
+                else
+                {
+                    if (!internalObject.IsInUse && _spawnObjects.TryGetValue(internalObject.Name, out var spawnHashSet) && spawnHashSet.Contains(internalObject))
+                    {
+                        spawnHashSet.Remove(internalObject);
+                        if (_unSpawnObjects.TryGetValue(internalObject.Name, out var unSpawnHashSet))
+                        {
+                            unSpawnHashSet.Add(internalObject);
+                            AddTimer(internalObject);
+                        }
+                    }
+                }
             }
             else
             {
@@ -385,14 +374,12 @@ namespace UniEngine.Module.ObjectPool
             {
                 return false;
             }
-
-            if (internalObject.IsInUse || internalObject.Locked || !internalObject.CustomCanReleaseFlag)
+            
+            if (_unSpawnObjects.TryGetValue(internalObject.Name, out var unSpawnHashSet))
             {
-                return false;
+                unSpawnHashSet.Remove(internalObject);
             }
-
-            _objects.Remove(internalObject.Name, internalObject);
-            _objectMap.Remove(internalObject.Peek().Target);
+            _objectMap.Remove(target);
 
             internalObject.Release(false);
             ReferencePool.Release(internalObject);
@@ -404,7 +391,7 @@ namespace UniEngine.Module.ObjectPool
         /// </summary>
         public override void Release()
         {
-            Release(Count - _capacity, _defaultReleaseObjectFilterCallback);
+            Release(Count - _capacity);
         }
 
         /// <summary>
@@ -413,52 +400,64 @@ namespace UniEngine.Module.ObjectPool
         /// <param name="toReleaseCount">尝试释放对象数量。</param>
         public override void Release(int toReleaseCount)
         {
-            Release(toReleaseCount, _defaultReleaseObjectFilterCallback);
-        }
-
-        /// <summary>
-        /// 释放对象池中的可释放对象。
-        /// </summary>
-        /// <param name="releaseObjectFilterCallback">释放对象筛选函数。</param>
-        public void Release(ReleaseObjectFilterCallback<T> releaseObjectFilterCallback)
-        {
-            Release(Count - _capacity, releaseObjectFilterCallback);
-        }
-
-        /// <summary>
-        /// 释放对象池中的可释放对象。
-        /// </summary>
-        /// <param name="toReleaseCount">尝试释放对象数量。</param>
-        /// <param name="releaseObjectFilterCallback">释放对象筛选函数。</param>
-        public void Release(int toReleaseCount, ReleaseObjectFilterCallback<T> releaseObjectFilterCallback)
-        {
-            if (releaseObjectFilterCallback == null)
-            {
-                throw new Exception("Release object filter callback is invalid.");
-            }
-
-            if (toReleaseCount < 0)
-            {
-                toReleaseCount = 0;
-            }
-
-            var expireTime = DateTime.MinValue;
-            if (_expireTime < float.MaxValue)
-            {
-                expireTime = DateTime.UtcNow.AddSeconds(-_expireTime);
-            }
-
-            _autoReleaseTime = 0f;
-            GetCanReleaseObjects(_cachedCanReleaseObjects);
-            var toReleaseObjects = releaseObjectFilterCallback(_cachedCanReleaseObjects, toReleaseCount, expireTime);
-            if (toReleaseObjects == null || toReleaseObjects.Count <= 0)
+            // 没有计时器不执行
+            if (_timer.Count == 0)
             {
                 return;
             }
 
-            foreach (var toReleaseObject in toReleaseObjects)
+            var timeNow = DateTime.UtcNow.Millisecond;
+            // 不到最近的计时器时间不执行
+            if (timeNow < _minExpireTime)
             {
-                ReleaseObject(toReleaseObject);
+                return;
+            }
+            // 判断哪些计时器可执行，并获取下一个最近的计时器时间
+            foreach (var keyValuePair in _timer)
+            {
+                var untilTime = keyValuePair.Key;
+                if (untilTime > timeNow)
+                {
+                    _minExpireTime = untilTime;
+                    break;
+                }
+
+                _expireTimeQueue.Enqueue(untilTime);
+            }
+            
+            while (_expireTimeQueue.Count > 0)
+            {
+                var expireTime = _expireTimeQueue.Dequeue();
+                if (!_timer.TryGetValue(expireTime, out var hashSet))
+                {
+                    continue;
+                }
+
+                foreach (var internalObject in hashSet)
+                {
+                    ReleaseObject(internalObject.Peek());
+                    toReleaseCount--;
+                }
+                hashSet.Clear();
+                _timer.Remove(expireTime);
+            }
+
+            if (toReleaseCount <= 0)
+            {
+                return;
+            }
+            
+            foreach (var keyValuePair in _unSpawnObjects)
+            {
+                var unSpawnHashSet = keyValuePair.Value;
+                foreach (var internalObject in unSpawnHashSet)
+                {
+                    if (toReleaseCount > 0)
+                    {
+                        ReleaseObject(internalObject.Peek());
+                        toReleaseCount--;
+                    }
+                }
             }
         }
 
@@ -468,31 +467,14 @@ namespace UniEngine.Module.ObjectPool
         public override void ReleaseAllUnused()
         {
             _autoReleaseTime = 0f;
-            GetCanReleaseObjects(_cachedCanReleaseObjects);
-            foreach (var toReleaseObject in _cachedCanReleaseObjects)
+            foreach (var keyValuePair in _unSpawnObjects)
             {
-                ReleaseObject(toReleaseObject);
-            }
-        }
-
-        /// <summary>
-        /// 获取所有对象信息。
-        /// </summary>
-        /// <returns>所有对象信息。</returns>
-        public override ObjectInfo[] GetAllObjectInfos()
-        {
-            var results = new List<ObjectInfo>();
-            foreach (var objectRanges in _objects)
-            {
-                foreach (var internalObject in objectRanges.Value)
+                var unSpawnHashSet = keyValuePair.Value;
+                foreach (var internalObject in unSpawnHashSet)
                 {
-                    results.Add(new ObjectInfo(internalObject.Name, internalObject.Locked,
-                        internalObject.CustomCanReleaseFlag, internalObject.Priority, internalObject.LastUseTime,
-                        internalObject.SpawnCount));
+                    ReleaseObject(internalObject.Peek());
                 }
             }
-
-            return results.ToArray();
         }
 
         internal override void Update()
@@ -513,11 +495,10 @@ namespace UniEngine.Module.ObjectPool
                 objectInMap.Value.Release(true);
                 ReferencePool.Release(objectInMap.Value);
             }
-
-            _objects.Clear();
+            
+            _spawnObjects.Clear();
+            _unSpawnObjects.Clear();
             _objectMap.Clear();
-            _cachedCanReleaseObjects.Clear();
-            _cachedToReleaseObjects.Clear();
         }
 
         private Object<T> GetObject(object target)
@@ -535,62 +516,32 @@ namespace UniEngine.Module.ObjectPool
             return null;
         }
 
-        private void GetCanReleaseObjects(List<T> results)
+        private void AddTimer(Object<T> internalObject)
         {
-            if (results == null)
+            var untilTime = internalObject.LastUseTime.AddSeconds(_expireTime).Millisecond;
+            if (_timer.TryGetValue(untilTime, out var hashSet))
             {
-                throw new Exception("Results is invalid.");
+                hashSet.Add(internalObject);
             }
-
-            results.Clear();
-            foreach (var objectInMap in _objectMap)
+            else
             {
-                var internalObject = objectInMap.Value;
-                if (internalObject.IsInUse || internalObject.Locked || !internalObject.CustomCanReleaseFlag)
-                {
-                    continue;
-                }
-
-                results.Add(internalObject.Peek());
+                var newHashSet = new HashSet<Object<T>> { internalObject };
+                _timer.Add(untilTime, newHashSet);
+            }
+            
+            if (untilTime < _minExpireTime)
+            {
+                _minExpireTime = untilTime;
             }
         }
-
-        private List<T> DefaultReleaseObjectFilterCallback(List<T> candidateObjects, int toReleaseCount,
-            DateTime expireTime)
+        
+        private void RemoveTimer(Object<T> internalObject)
         {
-            _cachedToReleaseObjects.Clear();
-
-            if (expireTime > DateTime.MinValue)
+            var untilTime = internalObject.LastUseTime.AddSeconds(_expireTime).Millisecond;
+            if (_timer.TryGetValue(untilTime, out var hashSet))
             {
-                for (var i = candidateObjects.Count - 1; i >= 0; i--)
-                {
-                    if (candidateObjects[i].LastUseTime <= expireTime)
-                    {
-                        _cachedToReleaseObjects.Add(candidateObjects[i]);
-                        candidateObjects.RemoveAt(i);
-                    }
-                }
-
-                toReleaseCount -= _cachedToReleaseObjects.Count;
+                hashSet.Remove(internalObject);
             }
-
-            for (var i = 0; toReleaseCount > 0 && i < candidateObjects.Count; i++)
-            {
-                for (var j = i + 1; j < candidateObjects.Count; j++)
-                {
-                    if (candidateObjects[i].Priority > candidateObjects[j].Priority
-                        || candidateObjects[i].Priority == candidateObjects[j].Priority &&
-                        candidateObjects[i].LastUseTime > candidateObjects[j].LastUseTime)
-                    {
-                        (candidateObjects[i], candidateObjects[j]) = (candidateObjects[j], candidateObjects[i]);
-                    }
-                }
-
-                _cachedToReleaseObjects.Add(candidateObjects[i]);
-                toReleaseCount--;
-            }
-
-            return _cachedToReleaseObjects;
         }
 
         private static string GetFullName(Type type, string name)

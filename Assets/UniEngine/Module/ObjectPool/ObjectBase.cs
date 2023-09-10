@@ -11,7 +11,6 @@ namespace UniEngine.Module.ObjectPool
         private string _name;
         private object _target;
         private bool _locked;
-        private int _priority;
         private DateTime _lastUseTime;
 
         /// <summary>
@@ -22,7 +21,6 @@ namespace UniEngine.Module.ObjectPool
             _name = null;
             _target = null;
             _locked = false;
-            _priority = 0;
             _lastUseTime = default(DateTime);
         }
 
@@ -46,20 +44,6 @@ namespace UniEngine.Module.ObjectPool
         }
 
         /// <summary>
-        /// 获取或设置对象的优先级。
-        /// </summary>
-        public int Priority
-        {
-            get => _priority;
-            set => _priority = value;
-        }
-
-        /// <summary>
-        /// 获取自定义释放检查标记。
-        /// </summary>
-        public virtual bool CustomCanReleaseFlag => true;
-
-        /// <summary>
         /// 获取对象上次使用时间。
         /// </summary>
         public DateTime LastUseTime
@@ -74,7 +58,7 @@ namespace UniEngine.Module.ObjectPool
         /// <param name="target">对象。</param>
         protected void Initialize(object target)
         {
-            Initialize(null, target, false, 0);
+            Initialize(null, target, false);
         }
 
         /// <summary>
@@ -84,7 +68,17 @@ namespace UniEngine.Module.ObjectPool
         /// <param name="target">对象。</param>
         protected void Initialize(string name, object target)
         {
-            Initialize(name, target, false, 0);
+            Initialize(name, target, false);
+        }
+
+        /// <summary>
+        /// 初始化对象基类。
+        /// </summary>
+        /// <param name="target">对象。</param>
+        /// <param name="locked">对象是否被加锁。</param>
+        protected void Initialize(object target, bool locked)
+        {
+            Initialize(null, target, locked);
         }
 
         /// <summary>
@@ -95,29 +89,6 @@ namespace UniEngine.Module.ObjectPool
         /// <param name="locked">对象是否被加锁。</param>
         protected void Initialize(string name, object target, bool locked)
         {
-            Initialize(name, target, locked, 0);
-        }
-
-        /// <summary>
-        /// 初始化对象基类。
-        /// </summary>
-        /// <param name="name">对象名称。</param>
-        /// <param name="target">对象。</param>
-        /// <param name="priority">对象的优先级。</param>
-        protected void Initialize(string name, object target, int priority)
-        {
-            Initialize(name, target, false, priority);
-        }
-
-        /// <summary>
-        /// 初始化对象基类。
-        /// </summary>
-        /// <param name="name">对象名称。</param>
-        /// <param name="target">对象。</param>
-        /// <param name="locked">对象是否被加锁。</param>
-        /// <param name="priority">对象的优先级。</param>
-        protected void Initialize(string name, object target, bool locked, int priority)
-        {
             if (target == null)
             {
                 throw new Exception($"Target '{name}' is invalid.");
@@ -126,7 +97,6 @@ namespace UniEngine.Module.ObjectPool
             _name = name ?? string.Empty;
             _target = target;
             _locked = locked;
-            _priority = priority;
             _lastUseTime = DateTime.UtcNow;
         }
 
@@ -138,7 +108,6 @@ namespace UniEngine.Module.ObjectPool
             _name = null;
             _target = null;
             _locked = false;
-            _priority = 0;
             _lastUseTime = default(DateTime);
         }
 
