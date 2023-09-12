@@ -9,10 +9,6 @@ namespace UniEngine.Module.ObjectPool
     /// </summary>
     public sealed class ObjectPoolManager : IModule
     {
-        private const int DefaultCapacity = int.MaxValue;
-        private const float DefaultExpireTime = float.MaxValue;
-        private const int DefaultPriority = 0;
-
         private readonly Dictionary<string, ObjectPoolBase> _objectPools;
         private readonly List<ObjectPoolBase> _cachedAllObjectPools;
         private readonly Comparison<ObjectPoolBase> _objectPoolComparer;
@@ -76,7 +72,7 @@ namespace UniEngine.Module.ObjectPool
         {
             foreach (var objectPool in _objectPools)
             {
-                objectPool.Value.Shutdown();
+                objectPool.Value.OnDestroy();
             }
 
             _objectPools.Clear();
@@ -96,26 +92,6 @@ namespace UniEngine.Module.ObjectPool
         /// <summary>
         /// 检查是否存在对象池。
         /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <returns>是否存在对象池。</returns>
-        public bool HasObjectPool(Type objectType)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalHasObjectPool(objectType.Name);
-        }
-
-        /// <summary>
-        /// 检查是否存在对象池。
-        /// </summary>
         /// <typeparam name="T">对象类型。</typeparam>
         /// <param name="name">对象池名称。</param>
         /// <returns>是否存在对象池。</returns>
@@ -125,55 +101,11 @@ namespace UniEngine.Module.ObjectPool
         }
 
         /// <summary>
-        /// 检查是否存在对象池。
-        /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <param name="name">对象池名称。</param>
-        /// <returns>是否存在对象池。</returns>
-        public bool HasObjectPool(Type objectType, string name)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalHasObjectPool(GetFullName(objectType, name));
-        }
-
-        /// <summary>
-        /// 检查是否存在对象池。
-        /// </summary>
-        /// <param name="condition">要检查的条件。</param>
-        /// <returns>是否存在对象池。</returns>
-        public bool HasObjectPool(Predicate<ObjectPoolBase> condition)
-        {
-            if (condition == null)
-            {
-                throw new Exception("Condition is invalid.");
-            }
-
-            foreach (var objectPool in _objectPools)
-            {
-                if (condition(objectPool.Value))
-                {
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        /// <summary>
         /// 获取对象池。
         /// </summary>
         /// <typeparam name="T">对象类型。</typeparam>
         /// <returns>要获取的对象池。</returns>
-        public ObjectPool<T> GetObjectPool<T>() where T : ObjectBase
+        public ObjectPool<T> GetObjectPool<T>() where T : ObjectBase, new()
         {
             return (ObjectPool<T>)InternalGetObjectPool(typeof(T).Name);
         }
@@ -181,76 +113,12 @@ namespace UniEngine.Module.ObjectPool
         /// <summary>
         /// 获取对象池。
         /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <returns>要获取的对象池。</returns>
-        public ObjectPoolBase GetObjectPool(Type objectType)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalGetObjectPool(objectType.Name);
-        }
-
-        /// <summary>
-        /// 获取对象池。
-        /// </summary>
         /// <typeparam name="T">对象类型。</typeparam>
         /// <param name="name">对象池名称。</param>
         /// <returns>要获取的对象池。</returns>
-        public ObjectPool<T> GetObjectPool<T>(string name) where T : ObjectBase
+        public ObjectPool<T> GetObjectPool<T>(string name) where T : ObjectBase, new()
         {
             return (ObjectPool<T>)InternalGetObjectPool(GetFullName(typeof(T), name));
-        }
-
-        /// <summary>
-        /// 获取对象池。
-        /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <param name="name">对象池名称。</param>
-        /// <returns>要获取的对象池。</returns>
-        public ObjectPoolBase GetObjectPool(Type objectType, string name)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalGetObjectPool(GetFullName(objectType, name));
-        }
-
-        /// <summary>
-        /// 获取对象池。
-        /// </summary>
-        /// <param name="condition">要检查的条件。</param>
-        /// <returns>要获取的对象池。</returns>
-        public ObjectPoolBase GetObjectPool(Predicate<ObjectPoolBase> condition)
-        {
-            if (condition == null)
-            {
-                throw new Exception("Condition is invalid.");
-            }
-
-            foreach (var objectPool in _objectPools)
-            {
-                if (condition(objectPool.Value))
-                {
-                    return objectPool.Value;
-                }
-            }
-
-            return null;
         }
 
         /// <summary>
@@ -382,32 +250,13 @@ namespace UniEngine.Module.ObjectPool
         /// </summary>
         /// <typeparam name="T">对象类型。</typeparam>
         /// <param name="name">对象池名称。</param>
-        /// <param name="autoReleaseInterval">对象池自动释放可释放对象的间隔秒数。</param>
         /// <param name="capacity">对象池的容量。</param>
-        /// <param name="expireTime">对象池对象过期秒数。</param>
         /// <param name="priority">对象池的优先级。</param>
+        /// <param name="enableCheck">是否开启检查</param>
         /// <returns>要创建的允许单次获取的对象池。</returns>
-        public ObjectPool<T> CreateObjectPool<T>(string name, float autoReleaseInterval, int capacity,
-            float expireTime, int priority) where T : ObjectBase
+        public ObjectPool<T> CreateObjectPool<T>(string name = "", int capacity = int.MaxValue, int priority = 0, bool enableCheck = false) where T : ObjectBase, new()
         {
-            return InternalCreateObjectPool<T>(name, autoReleaseInterval, capacity, expireTime, priority);
-        }
-
-        /// <summary>
-        /// 创建允许单次获取的对象池。
-        /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <param name="name">对象池名称。</param>
-        /// <param name="autoReleaseInterval">对象池自动释放可释放对象的间隔秒数。</param>
-        /// <param name="capacity">对象池的容量。</param>
-        /// <param name="expireTime">对象池对象过期秒数。</param>
-        /// <param name="priority">对象池的优先级。</param>
-        /// <returns>要创建的允许单次获取的对象池。</returns>
-        public ObjectPoolBase CreateObjectPool(Type objectType, string name, float autoReleaseInterval,
-            int capacity, float expireTime, int priority)
-        {
-            return InternalCreateObjectPool(objectType, name, autoReleaseInterval, capacity, expireTime,
-                priority);
+            return InternalCreateObjectPool<T>(name, capacity, priority, enableCheck);
         }
 
         /// <summary>
@@ -418,26 +267,6 @@ namespace UniEngine.Module.ObjectPool
         public bool DestroyObjectPool<T>() where T : ObjectBase
         {
             return InternalDestroyObjectPool(typeof(T).Name);
-        }
-
-        /// <summary>
-        /// 销毁对象池。
-        /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <returns>是否销毁对象池成功。</returns>
-        public bool DestroyObjectPool(Type objectType)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalDestroyObjectPool(objectType.Name);
         }
 
         /// <summary>
@@ -454,31 +283,10 @@ namespace UniEngine.Module.ObjectPool
         /// <summary>
         /// 销毁对象池。
         /// </summary>
-        /// <param name="objectType">对象类型。</param>
-        /// <param name="name">要销毁的对象池名称。</param>
-        /// <returns>是否销毁对象池成功。</returns>
-        public bool DestroyObjectPool(Type objectType, string name)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            return InternalDestroyObjectPool(GetFullName(objectType, name));
-        }
-
-        /// <summary>
-        /// 销毁对象池。
-        /// </summary>
         /// <typeparam name="T">对象类型。</typeparam>
         /// <param name="objectPool">要销毁的对象池。</param>
         /// <returns>是否销毁对象池成功。</returns>
-        public bool DestroyObjectPool<T>(ObjectPool<T> objectPool) where T : ObjectBase
+        public bool DestroyObjectPool<T>(ObjectPool<T> objectPool) where T : ObjectBase, new()
         {
             if (objectPool == null)
             {
@@ -486,33 +294,6 @@ namespace UniEngine.Module.ObjectPool
             }
 
             return InternalDestroyObjectPool(GetFullName(typeof(T), objectPool.Name));
-        }
-
-        /// <summary>
-        /// 销毁对象池。
-        /// </summary>
-        /// <param name="objectPool">要销毁的对象池。</param>
-        /// <returns>是否销毁对象池成功。</returns>
-        public bool DestroyObjectPool(ObjectPoolBase objectPool)
-        {
-            if (objectPool == null)
-            {
-                throw new Exception("Object pool is invalid.");
-            }
-
-            return InternalDestroyObjectPool(GetFullName(objectPool.ObjectType, objectPool.Name));
-        }
-
-        /// <summary>
-        /// 释放对象池中的可释放对象。
-        /// </summary>
-        public void Release()
-        {
-            GetAllObjectPools(true, _cachedAllObjectPools);
-            foreach (var objectPool in _cachedAllObjectPools)
-            {
-                objectPool.Release();
-            }
         }
 
         /// <summary>
@@ -542,8 +323,7 @@ namespace UniEngine.Module.ObjectPool
             return null;
         }
 
-        private ObjectPool<T> InternalCreateObjectPool<T>(string name, float autoReleaseInterval, int capacity,
-            float expireTime, int priority) where T : ObjectBase
+        private ObjectPool<T> InternalCreateObjectPool<T>(string name, int capacity, int priority, bool enableCheck) where T : ObjectBase, new()
         {
             var fullName = GetFullName(typeof(T), name);
             if (HasObjectPool<T>(name))
@@ -551,34 +331,7 @@ namespace UniEngine.Module.ObjectPool
                 throw new Exception($"Already exist object pool '{fullName}'.");
             }
 
-            var objectPool =
-                new ObjectPool<T>(name, autoReleaseInterval, capacity, expireTime, priority);
-            _objectPools.Add(fullName, objectPool);
-            return objectPool;
-        }
-
-        private ObjectPoolBase InternalCreateObjectPool(Type objectType, string name, float autoReleaseInterval,
-            int capacity, float expireTime, int priority)
-        {
-            if (objectType == null)
-            {
-                throw new Exception("Object type is invalid.");
-            }
-
-            if (!typeof(ObjectBase).IsAssignableFrom(objectType))
-            {
-                throw new Exception($"Object type '{objectType.FullName}' is invalid.");
-            }
-
-            var fullName = GetFullName(objectType, name);
-            if (HasObjectPool(objectType, name))
-            {
-                throw new Exception($"Already exist object pool '{fullName}'.");
-            }
-
-            var objectPoolType = typeof(ObjectPool<>).MakeGenericType(objectType);
-            var objectPool = (ObjectPoolBase)Activator.CreateInstance(objectPoolType, name, autoReleaseInterval,
-                capacity, expireTime, priority);
+            var objectPool = new ObjectPool<T>(name, capacity, priority, enableCheck);
             _objectPools.Add(fullName, objectPool);
             return objectPool;
         }
@@ -587,7 +340,7 @@ namespace UniEngine.Module.ObjectPool
         {
             if (_objectPools.TryGetValue(name, out var objectPool))
             {
-                objectPool.Shutdown();
+                objectPool.OnDestroy();
                 return _objectPools.Remove(name);
             }
 
