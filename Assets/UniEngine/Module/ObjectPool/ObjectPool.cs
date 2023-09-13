@@ -14,7 +14,7 @@ namespace UniEngine.Module.ObjectPool
         private readonly HashSet<T> _hashSet = new();
         private int _capacity;
         private int _count;
-        private readonly bool _enableCheck;
+        private bool _enableCheck;
 
         /// <summary>
         /// 初始化对象池的新实例。
@@ -157,6 +157,7 @@ namespace UniEngine.Module.ObjectPool
             }
 
             ReferencePool.Release(objectBase);
+            _count--;
         }
 
         /// <summary>
@@ -196,6 +197,9 @@ namespace UniEngine.Module.ObjectPool
 
             _stack.Clear();
             _hashSet.Clear();
+            _count = 0;
+            _capacity = 0;
+            _enableCheck = false;
         }
         
         internal override void Update()
