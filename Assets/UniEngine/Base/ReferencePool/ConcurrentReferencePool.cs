@@ -6,7 +6,7 @@ namespace UniEngine.Base.ReferencePool
     /// <summary>
     /// 引用池。
     /// </summary>
-    public static class ReferencePool
+    public static class ConcurrentReferencePool
     {
         private static readonly Dictionary<Type, ReferencePoolObject> ReferencePools = new();
 
@@ -18,19 +18,31 @@ namespace UniEngine.Base.ReferencePool
         /// <summary>
         /// 获取引用池的数量。
         /// </summary>
-        public static int Count => ReferencePools.Count;
+        public static int Count
+        {
+            get
+            {
+                lock (ReferencePools)
+                {
+                    return ReferencePools.Count;
+                }
+            }
+        }
 
         /// <summary>
         /// 清除所有引用池。
         /// </summary>
         public static void ClearAll()
         {
-            foreach (var referenceCollection in ReferencePools)
+            lock (ReferencePools)
             {
-                referenceCollection.Value.RemoveAll();
-            }
+                foreach (var referenceCollection in ReferencePools)
+                {
+                    referenceCollection.Value.RemoveAll();
+                }
 
-            ReferencePools.Clear();
+                ReferencePools.Clear();
+            }
         }
 
         /// <summary>
@@ -38,7 +50,7 @@ namespace UniEngine.Base.ReferencePool
         /// </summary>
         /// <typeparam name="T">引用类型。</typeparam>
         /// <returns>引用。</returns>
-        public static T Acquire<T>() where T : class, IReference, new()
+        public static IReference Acquire<T>() where T : class, IReference, new()
         {
             return GetReferencePool(typeof(T)).Acquire<T>();
         }
@@ -180,10 +192,14 @@ namespace UniEngine.Base.ReferencePool
                 throw new Exception("ReferenceType is invalid.");
             }
 
-            if (!ReferencePools.TryGetValue(referenceType, out var referencePoolObject))
+            ReferencePoolObject referencePoolObject;
+            lock (ReferencePools)
             {
-                referencePoolObject = new ReferencePoolObject(referenceType);
-                ReferencePools.Add(referenceType, referencePoolObject);
+                if (!ReferencePools.TryGetValue(referenceType, out referencePoolObject))
+                {
+                    referencePoolObject = new ReferencePoolObject(referenceType);
+                    ReferencePools.Add(referenceType, referencePoolObject);
+                }
             }
 
             return referencePoolObject;

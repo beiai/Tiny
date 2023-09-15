@@ -3,11 +3,11 @@ using System.Collections.Generic;
 
 namespace UniEngine.Base.ReferencePool
 {
-    public sealed class ReferencePoolObject
+    public sealed class ConcurrentReferencePoolObject
     {
         private readonly Stack<IReference> _references;
 
-        public ReferencePoolObject(Type referenceType)
+        public ConcurrentReferencePoolObject(Type referenceType)
         {
             _references = new Stack<IReference>();
             ReferenceType = referenceType;
@@ -26,7 +26,16 @@ namespace UniEngine.Base.ReferencePool
         /// <summary>
         /// 尚未使用的对象的次数
         /// </summary>
-        public int UnusedReferenceCount => _references.Count;
+        public int UnusedReferenceCount
+        {
+            get
+            {
+                lock (_references)
+                {
+                    return _references.Count;
+                }
+            }
+        }
 
         public int UsingReferenceCount { get; private set; }
 
@@ -59,9 +68,12 @@ namespace UniEngine.Base.ReferencePool
 
             UsingReferenceCount++;
             AcquireReferenceCount++;
-            if (_references.Count > 0)
+            lock (_references)
             {
-                return (T)_references.Pop();
+                if (_references.Count > 0)
+                {
+                    return (T)_references.Pop();
+                }
             }
 
             AddReferenceCount++;
@@ -71,12 +83,15 @@ namespace UniEngine.Base.ReferencePool
         public void Release(IReference reference)
         {
             reference.Clear();
-            if (ReferencePool.EnableStrictCheck && _references.Contains(reference))
+            lock (_references)
             {
-                throw new Exception("The reference has been released.");
-            }
+                if (ReferencePool.EnableStrictCheck && _references.Contains(reference))
+                {
+                    throw new Exception("The reference has been released.");
+                }
 
-            _references.Push(reference);
+                _references.Push(reference);
+            }
 
             ReleaseReferenceCount++;
             UsingReferenceCount--;
@@ -89,40 +104,52 @@ namespace UniEngine.Base.ReferencePool
                 throw new Exception("Type is invalid.");
             }
 
-            AddReferenceCount += count;
-            while (count-- > 0)
+            lock (_references)
             {
-                _references.Push(new T());
+                AddReferenceCount += count;
+                while (count-- > 0)
+                {
+                    _references.Push(new T());
+                }
             }
         }
 
         public void Add(int count)
         {
-            AddReferenceCount += count;
-            while (count-- > 0)
+            lock (_references)
             {
-                _references.Push((IReference)Activator.CreateInstance(ReferenceType));
+                AddReferenceCount += count;
+                while (count-- > 0)
+                {
+                    _references.Push((IReference)Activator.CreateInstance(ReferenceType));
+                }
             }
         }
 
         public void Remove(int count)
         {
-            if (count > _references.Count)
+            lock (_references)
             {
-                count = _references.Count;
-            }
+                if (count > _references.Count)
+                {
+                    count = _references.Count;
+                }
 
-            RemoveReferenceCount += count;
-            while (count-- > 0)
-            {
-                _references.Pop();
+                RemoveReferenceCount += count;
+                while (count-- > 0)
+                {
+                    _references.Pop();
+                }
             }
         }
 
         public void RemoveAll()
         {
-            RemoveReferenceCount += _references.Count;
-            _references.Clear();
+            lock (_references)
+            {
+                RemoveReferenceCount += _references.Count;
+                _references.Clear();
+            }
         }
     }
 }
