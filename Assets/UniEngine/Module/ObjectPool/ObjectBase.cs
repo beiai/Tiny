@@ -17,9 +17,7 @@ namespace UniEngine.Module.ObjectPool
         /// <summary>
         /// 清理对象基类。
         /// </summary>
-        public virtual void Clear()
-        {
-        }
+        public abstract void Clear();
         
         /// <summary>
         /// 创建对象。
