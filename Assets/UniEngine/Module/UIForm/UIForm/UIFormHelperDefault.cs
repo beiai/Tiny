@@ -28,7 +28,6 @@ namespace UniEngine.Module.UIForm.UIForm
                 if (handle.Status == EOperationStatus.Succeed)
                 {
                     var openUIFormInfo = (OpenUIFormInfo)userData;
-                    openUIFormInfo.AssetHandle = handle;
                     loadAssetCallbacks.LoadAssetSuccessCallback.Invoke(uiAssetName, handle.AssetObject, userData);
                 }
                 else
@@ -65,10 +64,7 @@ namespace UniEngine.Module.UIForm.UIForm
         public override object AddUIFormAsset(string uiFormAssetName, object userData)
         {
             var openUIFormInfo = (OpenUIFormInfo)userData;
-            var uiFormInstance = Instantiate(openUIFormInfo.AssetHandle.AssetObject);
-            var uiFormInstanceObject = UIFormInstanceObject.Create(uiFormAssetName, uiFormInstance, this, openUIFormInfo);
-            // _uiFormObjectPool.Register(uiFormInstanceObject, true);
-            return uiFormInstance;
+            return null;
         }
 
         /// <summary>

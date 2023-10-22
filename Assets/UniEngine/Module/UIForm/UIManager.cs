@@ -778,7 +778,6 @@ namespace UniEngine.Module.UIForm
             if (_uiFormsToReleaseOnLoad.Contains(openUIFormInfo.SerialId))
             {
                 _uiFormsToReleaseOnLoad.Remove(openUIFormInfo.SerialId);
-                openUIFormInfo.AssetHandle.Release();
                 ReferencePool.Release(openUIFormInfo);
                 return;
             }
@@ -803,7 +802,6 @@ namespace UniEngine.Module.UIForm
             if (_uiFormsToReleaseOnLoad.Contains(openUIFormInfo.SerialId))
             {
                 _uiFormsToReleaseOnLoad.Remove(openUIFormInfo.SerialId);
-                openUIFormInfo.AssetHandle.Release();
                 ReferencePool.Release(openUIFormInfo);
                 return;
             }

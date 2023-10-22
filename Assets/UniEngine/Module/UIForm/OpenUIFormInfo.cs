@@ -25,8 +25,6 @@ namespace UniEngine.Module.UIForm
         public bool PauseCoveredUIForm => _pauseCoveredUIForm;
 
         public object UserData => _userData;
-        
-        public AssetOperationHandle AssetHandle { get; set; }
 
         public static OpenUIFormInfo Create(int serialId, UIGroup.UIGroup uiGroup, bool pauseCoveredUIForm, object userData)
         {
